@@ -30,19 +30,21 @@ import PINCache
     
     var server: HLSCachingReverseProxyServer?
 
+    let serverPort: UInt = 8080
+
     lazy var storage: Cache.Storage<String,Data>? = {
         return try? Cache.Storage<String,Data>(diskConfig: diskConfig, memoryConfig: memoryConfig, transformer: TransformerFactory.forCodable(ofType: Data.self))
     }()
-    
 
-    ///Setups cache server for HLS streams
+
+    ///Setups cache server for HLS streams. The server starts on the first cached HLS item, see
+    ///getCachingPlayerItemForNormalPlayback.
     @objc public func setup(){
         GCDWebServer.setLogLevel(4)
         let webServer = GCDWebServer()
         let cache = PINCache.shared
         let urlSession = URLSession.shared
-        server = HLSCachingReverseProxyServer(webServer: webServer, urlSession: urlSession, cache: cache)
-        server?.start(port: 8080)
+        server = LoopbackHLSCachingReverseProxyServer(webServer: webServer, urlSession: urlSession, cache: cache)
     }
     
     @objc public func setMaxCacheSize(_ maxCacheSize: NSNumber?){
@@ -90,9 +92,9 @@ import PINCache
     @objc public func getCachingPlayerItemForNormalPlayback(_ url: URL, cacheKey: String?, videoExtension: String?, headers: Dictionary<NSObject,AnyObject>) -> AVPlayerItem? {
         let mimeTypeResult = getMimeType(url:url, explicitVideoExtension: videoExtension)
         if (mimeTypeResult.1 == "application/vnd.apple.mpegurl"){
-            let reverseProxyURL = server?.reverseProxyURL(from: url)!
-            let playerItem = AVPlayerItem(url: reverseProxyURL!)
-            return playerItem
+            server?.start(port: serverPort)
+            let reverseProxyURL = server?.reverseProxyURL(from: url)
+            return AVPlayerItem(url: reverseProxyURL ?? url)
         } else {
             return getCachingPlayerItem(url, cacheKey: cacheKey, videoExtension: videoExtension, headers: headers)
         }
